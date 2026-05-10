@@ -1,65 +1,71 @@
 ---
 name: xms-login
-description: Automates XMS (XMS客服管理系统) SSO login via browser automation. Handles navigation to the XMS portal, SSO redirection detection, DOM-based credential injection, and login confirmation. Use when the user needs to log into XMS, authenticate with the cs-packet.i4px.com system, or perform any XMS workflow that requires a valid session.
+description: Automates XMS customer service system SSO login via browser automation. Handles navigation to the XMS portal, SSO redirection detection, DOM-based credential injection with event triggering, and login confirmation. Use when the user needs to log into XMS, authenticate with cs-packet.i4px.com, or perform any XMS workflow requiring a valid session.
 ---
 
 # XMS 登录自动化
 
 ## Overview
 
-Automates the SSO login flow for the XMS customer service management system. The system redirects unauthenticated users from `cs-packet.i4px.com` to an SSO login page at `sso.i4px.com`. Credentials are injected via JavaScript DOM manipulation because the login form is hidden from the accessibility tree.
+Automates SSO login for the XMS customer service management system. Unauthenticated users are redirected from `cs-packet.i4px.com` to `sso.i4px.com`. The login form is invisible to the accessibility tree, so credentials must be injected via JavaScript DOM manipulation.
 
 ## Login Workflow
 
-### Step 1: Navigate to XMS
+### Step 1: Navigate
 
 Open `http://cs.packet.i4px.com/` in the browser.
 
-### Step 2: Detect SSO Redirection
+### Step 2: Window Health Check
 
-Check the current page URL:
-- If the URL contains `sso.i4px.com`, proceed to Step 3 (SSO login required)
-- If the URL is already `cs-packet.i4px.com/index` or similar, the user is already logged in — skip to Step 4
+Before proceeding, verify the browser window:
 
-### Step 3: Inject Credentials and Submit
+1. **Check**: `window.innerWidth + ',' + window.innerHeight`
+2. **JS resize**: If broken, `window.moveTo(0,0); window.resizeTo(1440,900)`, wait 2s, recheck
+3. **New tab**: `tabs_create_mcp`, check size
+4. **Recreate**: Close tabs one by one (`tabs_close_mcp` only accepts single `tabId`), then `tabs_context_mcp` with `createIfEmpty:true`
+5. **Small fallback**: 256x116 is functional. DOM operations work. Only abort at `0,0`.
 
-Use `javascript_tool` to directly manipulate the login form DOM:
+### Step 3: Detect SSO
+
+Check current URL:
+- Contains `sso.i4px.com` -> proceed to Step 4
+- Already `cs-packet.i4px.com/index` -> already logged in, skip to Step 5
+
+### Step 4: Inject Credentials
 
 ```javascript
-// Fill credentials
-const loginName = document.getElementById('loginName');
-const loginPwd = document.getElementById('loginPwd');
+const username = document.getElementById('username');
+const passwordOrg = document.getElementById('passwordOrg');
 
-if (loginName && loginPwd) {
-  loginName.value = 'USERNAME';
-  loginPwd.value = 'PASSWORD';
+if (username && passwordOrg) {
+  username.value = 'USERNAME';
+  passwordOrg.value = 'PASSWORD';
 
-  // Trigger input events so the framework registers the values
-  loginName.dispatchEvent(new Event('input', { bubbles: true }));
-  loginPwd.dispatchEvent(new Event('input', { bubbles: true }));
+  ['input', 'change', 'keyup'].forEach(evt => {
+    username.dispatchEvent(new Event(evt, { bubbles: true }));
+    passwordOrg.dispatchEvent(new Event(evt, { bubbles: true }));
+  });
 
-  // Click the login button
-  const loginBtn = document.querySelector('#loginBtn, .login-btn, button[type="submit"]');
-  if (loginBtn) {
-    loginBtn.click();
-  }
+  document.getElementById('signbtn').click();
 }
 ```
 
-> Replace `USERNAME` and `PASSWORD` with the actual credentials from configuration.
+> Replace USERNAME/PASSWORD with actual credentials. Element IDs are `username`, `passwordOrg`, `signbtn` — not `loginName`, `loginPwd`, or `loginBtn`.
 
-### Step 4: Confirm Login Success
+### Step 5: Confirm
 
-Wait for the page to redirect to `cs-packet.i4px.com/index`. Verify by checking:
-- Page URL contains `cs-packet.i4px.com/index`
-- Page title is "XMS客服管理" or similar
-- The left sidebar menu is visible (indicating successful login)
+Wait for redirect to `cs-packet.i4px.com/index`. Verify by checking URL and page title. If no redirect within 30s, retry Step 4 once.
 
-If the redirect does not occur within 30 seconds, retry Step 3 once.
+## Verified Element IDs
+
+| Element | Correct ID | Incorrect (old) |
+|---------|------------|-----------------|
+| Username input | `username` | `loginName` |
+| Password input | `passwordOrg` | `loginPwd` |
+| Login button | `signbtn` | `loginBtn` |
 
 ## Critical Rules
 
-- **DOM injection only**: The login form fields are invisible to the accessibility tree, so `javascript_tool` is the only reliable way to fill them
-- **Trigger input events**: Simply setting `.value` is not enough — always dispatch `input` events so the frontend framework detects the change
-- **Button selector fallback**: If `loginBtn` is not found by ID, try class selectors or `button[type="submit"]`
-- **Already logged in**: Always check the current URL first to avoid unnecessary re-login
+- **DOM injection only**: The login form is invisible to accessibility trees. `javascript_tool` is the only reliable method.
+- **Trigger events**: Setting `.value` alone is insufficient. Always dispatch `input`/`change`/`keyup` events so the frontend framework detects the change.
+- **Already logged in**: Always check URL first to avoid unnecessary re-login.
