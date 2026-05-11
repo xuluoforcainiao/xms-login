@@ -84,12 +84,38 @@ If the URL does not change within **3 minutes** and no special scenario above oc
 - Set `last_error = "XMS login timeout"`
 - Handle via the outer retry logic
 
-### Step 6: Confirm Login Success
+### Step 6: Handle "Server Exception" Error
+
+After navigating or during the login process, the page may display a "服务器异常" (server exception) error. This is a transient server-side error that can be resolved by refreshing the page:
+
+```javascript
+// Check if the page contains server exception message
+const hasServerError = document.body.innerText.includes('服务器异常') ||
+  document.body.innerText.includes('系统异常') ||
+  document.body.innerText.includes('服务异常');
+
+if (hasServerError) {
+  // Record the error for logging
+  console.log('Server exception detected, will recreate tab and retry login');
+}
+```
+
+**Action when server exception detected**:
+1. **Close current tab**: Use `tabs_close_mcp` to close the current tab
+2. **Create new tab**: Use `tabs_create_mcp` to open a fresh tab
+3. **Re-navigate**: Open `http://cs.packet.i4px.com/` again in the new tab
+4. **Re-login**: Go back to Step 3 (Detect SSO) and retry the entire login flow
+5. This retry counts toward the outer loop's `max_retries`
+
+> **Note**: Do NOT repeatedly click the same error page. Always close the tab and create a new one. The server exception is typically transient and resolves on a fresh page load.
+
+### Step 7: Confirm Login Success
 
 Wait for redirect to `cs-packet.i4px.com/index`. Verify by checking URL and page title.
 
 - If redirected successfully → login complete
 - If still on `sso.i4px.com` after handling all dialogs above → record error and retry via outer loop
+- If "服务器异常" appears at any point → go to Step 6, close tab and retry
 
 ## Verified Element IDs
 
